@@ -167,3 +167,49 @@ class Stage3Settings:
         """Create required runtime directories if they do not already exist."""
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class Stage4Settings:
+    """Configuration container for Stage 4 baseline modeling behavior."""
+
+    project_root: Path
+    x_train_path: Path
+    x_test_path: Path
+    y_train_path: Path
+    y_test_path: Path
+    logs_dir: Path
+    artifacts_dir: Path
+    target_column: str = "Total Fare (BDT)"
+    log_file_name: str = "flight_fare_pipeline.log"
+    log_level: str = "INFO"
+    log_max_bytes: int = 5_000_000
+    log_backup_count: int = 5
+
+    @classmethod
+    def from_env(cls) -> "Stage4Settings":
+        """Build Stage 4 settings from environment variables with defaults."""
+        project_root = Path(os.getenv("FF_PROJECT_ROOT", default_project_root())).resolve()
+        stage2_dir = project_root / "artifacts" / "stage_2"
+        logs_dir = Path(os.getenv("FF_LOGS_DIR", project_root / "logs")).resolve()
+        artifacts_dir = Path(os.getenv("FF_ARTIFACTS_DIR", project_root / "artifacts")).resolve()
+
+        return cls(
+            project_root=project_root,
+            x_train_path=Path(os.getenv("FF_STAGE4_X_TRAIN_PATH", stage2_dir / "x_train_processed.csv")).resolve(),
+            x_test_path=Path(os.getenv("FF_STAGE4_X_TEST_PATH", stage2_dir / "x_test_processed.csv")).resolve(),
+            y_train_path=Path(os.getenv("FF_STAGE4_Y_TRAIN_PATH", stage2_dir / "y_train.csv")).resolve(),
+            y_test_path=Path(os.getenv("FF_STAGE4_Y_TEST_PATH", stage2_dir / "y_test.csv")).resolve(),
+            logs_dir=logs_dir,
+            artifacts_dir=artifacts_dir,
+            target_column=os.getenv("FF_STAGE4_TARGET_COLUMN", "Total Fare (BDT)").strip(),
+            log_file_name=os.getenv("FF_LOG_FILE_NAME", "flight_fare_pipeline.log"),
+            log_level=os.getenv("FF_LOG_LEVEL", "INFO").upper(),
+            log_max_bytes=read_env_int("FF_LOG_MAX_BYTES", 5_000_000),
+            log_backup_count=read_env_int("FF_LOG_BACKUP_COUNT", 5),
+        )
+
+    def ensure_directories(self) -> None:
+        """Create required runtime directories if they do not already exist."""
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
