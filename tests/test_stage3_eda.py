@@ -13,7 +13,7 @@ from src.flight_fare.settings import Stage3Settings
 from src.flight_fare.stage3_eda import compute_kpi_tables, prepare_eda_dataframe, run_stage_3
 
 
-def _build_stage3_dataset(rows: int = 40) -> pd.DataFrame:
+def build_stage3_dataset(rows: int = 40) -> pd.DataFrame:
     """Create a schema-valid synthetic dataset suitable for Stage 3 execution."""
     records: list[dict] = []
     for index in range(rows):
@@ -48,7 +48,7 @@ class Stage3EdaTests(unittest.TestCase):
 
     def test_compute_kpi_tables(self) -> None:
         """KPI tables should include non-empty route frequency and top route output."""
-        dataframe = prepare_eda_dataframe(_build_stage3_dataset(rows=30))
+        dataframe = prepare_eda_dataframe(build_stage3_dataset(rows=30))
         kpis = compute_kpi_tables(dataframe, top_n_routes=5)
 
         self.assertIn("route_frequency", kpis)
@@ -61,7 +61,7 @@ class Stage3EdaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             dataset_path = root / "stage3_data.csv"
-            _build_stage3_dataset(rows=45).to_csv(dataset_path, index=False)
+            build_stage3_dataset(rows=45).to_csv(dataset_path, index=False)
 
             settings = Stage3Settings(
                 project_root=root,
