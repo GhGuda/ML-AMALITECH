@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .data_loader import load_flight_dataset
-from .logging_utils import configure_logging
+from .logging_utils import configure_logging, shutdown_logger_handlers
 from .profiling import generate_initial_profile, save_profile
 from .settings import Stage1Settings
 
@@ -104,11 +103,3 @@ def run_stage_1(
         )
     finally:
         shutdown_logger_handlers(logger)
-
-
-def shutdown_logger_handlers(logger: logging.Logger) -> None:
-    """Flush, close, and detach handlers to release file locks reliably."""
-    for handler in logger.handlers:
-        handler.flush()
-        handler.close()
-    logger.handlers.clear()
