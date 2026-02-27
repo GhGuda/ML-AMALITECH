@@ -273,3 +273,60 @@ class Stage5Settings:
         """Create required runtime directories if they do not already exist."""
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class Stage6Settings:
+    """Configuration container for Stage 6 interpretation and insight generation."""
+
+    project_root: Path
+    cleaned_dataset_path: Path
+    stage5_summary_path: Path
+    feature_impact_path: Path
+    logs_dir: Path
+    artifacts_dir: Path
+    target_column: str = "Total Fare (BDT)"
+    log_file_name: str = "flight_fare_pipeline.log"
+    log_level: str = "INFO"
+    log_max_bytes: int = 5_000_000
+    log_backup_count: int = 5
+    top_feature_count: int = 20
+    top_route_season_count: int = 15
+    min_route_season_flights: int = 30
+
+    @classmethod
+    def from_env(cls) -> "Stage6Settings":
+        """Build Stage 6 settings from environment variables with defaults."""
+        project_root = Path(os.getenv("FF_PROJECT_ROOT", default_project_root())).resolve()
+        stage2_dir = project_root / "artifacts" / "stage_2"
+        stage5_dir = project_root / "artifacts" / "stage_5"
+        logs_dir = Path(os.getenv("FF_LOGS_DIR", project_root / "logs")).resolve()
+        artifacts_dir = Path(os.getenv("FF_ARTIFACTS_DIR", project_root / "artifacts")).resolve()
+
+        return cls(
+            project_root=project_root,
+            cleaned_dataset_path=Path(
+                os.getenv("FF_STAGE6_CLEANED_DATASET_PATH", stage2_dir / "cleaned_dataset.csv")
+            ).resolve(),
+            stage5_summary_path=Path(
+                os.getenv("FF_STAGE6_STAGE5_SUMMARY_PATH", stage5_dir / "stage5_summary_report.json")
+            ).resolve(),
+            feature_impact_path=Path(
+                os.getenv("FF_STAGE6_FEATURE_IMPACT_PATH", stage5_dir / "best_model_feature_impact.csv")
+            ).resolve(),
+            logs_dir=logs_dir,
+            artifacts_dir=artifacts_dir,
+            target_column=os.getenv("FF_STAGE6_TARGET_COLUMN", "Total Fare (BDT)").strip(),
+            log_file_name=os.getenv("FF_LOG_FILE_NAME", "flight_fare_pipeline.log"),
+            log_level=os.getenv("FF_LOG_LEVEL", "INFO").upper(),
+            log_max_bytes=read_env_int("FF_LOG_MAX_BYTES", 5_000_000),
+            log_backup_count=read_env_int("FF_LOG_BACKUP_COUNT", 5),
+            top_feature_count=read_env_int("FF_STAGE6_TOP_FEATURE_COUNT", 20),
+            top_route_season_count=read_env_int("FF_STAGE6_TOP_ROUTE_SEASON_COUNT", 15),
+            min_route_season_flights=read_env_int("FF_STAGE6_MIN_ROUTE_SEASON_FLIGHTS", 30),
+        )
+
+    def ensure_directories(self) -> None:
+        """Create required runtime directories if they do not already exist."""
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
