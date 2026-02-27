@@ -34,8 +34,6 @@ def _build_cleaned_dataset(rows: int = 120) -> pd.DataFrame:
                 "Aircraft Type": "A320" if index % 2 == 0 else "B737",
                 "Class": "Economy",
                 "Booking Source": "Web" if index % 2 == 0 else "App",
-                "Base Fare (BDT)": 1000 + (index * 12),
-                "Tax & Surcharge (BDT)": 200 + (index * 4),
                 "Total Fare (BDT)": 1200 + (index * 16),
                 "Seasonality": "Peak" if index % 4 == 0 else "Regular",
                 "Days Before Departure": 5 + (index % 10),
@@ -52,8 +50,6 @@ def _prepare_model_and_preprocessor(cleaned_df: pd.DataFrame) -> tuple[object, o
     """Train synthetic preprocessor+model pair for delivery package testing."""
     numeric_cols = [
         "Duration (hrs)",
-        "Base Fare (BDT)",
-        "Tax & Surcharge (BDT)",
         "Days Before Departure",
         "Departure Month",
         "Departure Day",

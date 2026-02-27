@@ -17,8 +17,6 @@ REQUIRED_COLUMNS = {
     "Source",
     "Destination",
     "Departure Date & Time",
-    "Base Fare (BDT)",
-    "Tax & Surcharge (BDT)",
     "Total Fare (BDT)",
 }
 

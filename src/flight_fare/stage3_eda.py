@@ -1,4 +1,4 @@
-"""Stage 3 pipeline for exploratory analysis, KPI extraction, and visualization artifacts."""
+"""Stage 3 pipeline for traveler-centric exploratory analysis and KPI artifacts."""
 
 from __future__ import annotations
 
@@ -23,15 +23,16 @@ from .settings import Stage3Settings
 
 T = TypeVar("T")
 
-BASE_FARE_COLUMN = "Base Fare (BDT)"
-TAX_COLUMN = "Tax & Surcharge (BDT)"
-AIRLINE_COLUMN = "Airline"
 SOURCE_COLUMN = "Source"
 DESTINATION_COLUMN = "Destination"
 DEPARTURE_MONTH_COLUMN = "Departure Month"
 DEPARTURE_SEASON_COLUMN = "Departure Season"
 SEASONALITY_COLUMN = "Seasonality"
 ROUTE_COLUMN = "Route"
+CLASS_COLUMN = "Class"
+STOPOVERS_COLUMN = "Stopovers"
+DAYS_BEFORE_COLUMN = "Days Before Departure"
+BOOKING_WINDOW_COLUMN = "Booking Window"
 
 
 class Stage3ArtifactError(RuntimeError):
@@ -49,10 +50,12 @@ class Stage3Outputs:
     summary_report_path: Path
     descriptive_stats_path: Path
     correlation_matrix_path: Path
-    average_fare_by_airline_path: Path
+    average_fare_by_route_path: Path
     route_frequency_path: Path
     seasonal_fare_path: Path
+    booking_window_fare_path: Path
     top_expensive_routes_path: Path
+    top_affordable_routes_path: Path
     plots_directory: Path
 
 
@@ -101,7 +104,7 @@ def run_with_retries_and_timeout(
             )
 
         if attempt < retries:
-            # Add a brief delay to mitigate transient I/O contention.
+            # Brief delay helps absorb transient file-system contention.
             time.sleep(retry_delay_seconds)
 
     if last_error is None:
@@ -133,8 +136,26 @@ def build_route_column(dataframe: pd.DataFrame) -> pd.Series:
     return source_series.str.strip().str.upper() + " -> " + destination_series.str.strip().str.upper()
 
 
+def bucketize_booking_window(days_before_departure: float | int | None) -> str:
+    """Map days-before-departure values to traveler booking windows."""
+    if days_before_departure is None or pd.isna(days_before_departure):
+        return "unknown"
+    days = float(days_before_departure)
+    if days <= 3:
+        return "last_minute_0_3"
+    if days <= 7:
+        return "short_term_4_7"
+    if days <= 14:
+        return "mid_term_8_14"
+    if days <= 30:
+        return "planned_15_30"
+    if days <= 60:
+        return "early_31_60"
+    return "very_early_61_plus"
+
+
 def prepare_eda_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Create a copy of dataset with guaranteed EDA helper columns."""
+    """Create a copy of dataset with guaranteed traveler-centric helper columns."""
     prepared_df = dataframe.copy()
     prepared_df[ROUTE_COLUMN] = build_route_column(prepared_df)
 
@@ -154,11 +175,17 @@ def prepare_eda_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
         else:
             prepared_df[DEPARTURE_SEASON_COLUMN] = "unknown"
 
+    if DAYS_BEFORE_COLUMN in prepared_df.columns:
+        days_series = pd.to_numeric(prepared_df[DAYS_BEFORE_COLUMN], errors="coerce")
+        prepared_df[BOOKING_WINDOW_COLUMN] = days_series.apply(bucketize_booking_window)
+    else:
+        prepared_df[BOOKING_WINDOW_COLUMN] = "unknown"
+
     return prepared_df
 
 
 def summarize_fare_by_group(dataframe: pd.DataFrame, group_column: str) -> pd.DataFrame:
-    """Aggregate fare statistics for a categorical grouping column."""
+    """Aggregate fare statistics for a grouping column."""
     grouped = (
         dataframe.groupby(group_column, dropna=False)[TARGET_COLUMN]
         .agg(["count", "mean", "median", "min", "max", "std"])
@@ -177,19 +204,29 @@ def summarize_fare_by_group(dataframe: pd.DataFrame, group_column: str) -> pd.Da
     )
 
 
+def summarize_if_available(dataframe: pd.DataFrame, group_column: str) -> list[dict]:
+    """Return grouped summary records when the requested column exists."""
+    if group_column not in dataframe.columns:
+        return []
+    return summarize_fare_by_group(dataframe, group_column).to_dict(orient="records")
+
+
 def compute_descriptive_stats(dataframe: pd.DataFrame) -> dict:
-    """Build a structured descriptive-statistics payload."""
+    """Build a structured descriptive-statistics payload for travelers."""
     numeric_columns = dataframe.select_dtypes(include=["number"]).columns.tolist()
     numeric_summary = dataframe[numeric_columns].describe().to_dict() if numeric_columns else {}
 
     payload = {
         "shape": {"rows": int(dataframe.shape[0]), "columns": int(dataframe.shape[1])},
         "numeric_columns": numeric_columns,
-        "target_summary": summarize_fare_by_group(dataframe, AIRLINE_COLUMN).head(10).to_dict(orient="records"),
-        "fare_by_airline": summarize_fare_by_group(dataframe, AIRLINE_COLUMN).to_dict(orient="records"),
-        "fare_by_source": summarize_fare_by_group(dataframe, SOURCE_COLUMN).to_dict(orient="records"),
-        "fare_by_destination": summarize_fare_by_group(dataframe, DESTINATION_COLUMN).to_dict(orient="records"),
-        "fare_by_season": summarize_fare_by_group(dataframe, DEPARTURE_SEASON_COLUMN).to_dict(orient="records"),
+        "target_summary": summarize_fare_by_group(dataframe, ROUTE_COLUMN).head(10).to_dict(orient="records"),
+        "fare_by_route": summarize_if_available(dataframe, ROUTE_COLUMN),
+        "fare_by_source": summarize_if_available(dataframe, SOURCE_COLUMN),
+        "fare_by_destination": summarize_if_available(dataframe, DESTINATION_COLUMN),
+        "fare_by_season": summarize_if_available(dataframe, DEPARTURE_SEASON_COLUMN),
+        "fare_by_class": summarize_if_available(dataframe, CLASS_COLUMN),
+        "fare_by_stopovers": summarize_if_available(dataframe, STOPOVERS_COLUMN),
+        "fare_by_booking_window": summarize_if_available(dataframe, BOOKING_WINDOW_COLUMN),
         "numeric_summary": numeric_summary,
     }
     return payload
@@ -203,9 +240,25 @@ def compute_correlation_matrix(dataframe: pd.DataFrame) -> pd.DataFrame:
     return numeric_df.corr(numeric_only=True)
 
 
+def compute_booking_window_fare(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Compute booking-window fare summary used for traveler planning insights."""
+    if BOOKING_WINDOW_COLUMN not in dataframe.columns:
+        return pd.DataFrame(columns=[BOOKING_WINDOW_COLUMN, "flight_count", "avg_total_fare_bdt", "median_total_fare_bdt"])
+
+    booking_window_df = (
+        dataframe.groupby(BOOKING_WINDOW_COLUMN, dropna=False)[TARGET_COLUMN]
+        .agg(["count", "mean", "median"])
+        .reset_index()
+        .rename(columns={"count": "flight_count", "mean": "avg_total_fare_bdt", "median": "median_total_fare_bdt"})
+        .sort_values("avg_total_fare_bdt", ascending=True)
+        .reset_index(drop=True)
+    )
+    return booking_window_df
+
+
 def compute_kpi_tables(dataframe: pd.DataFrame, top_n_routes: int) -> dict[str, pd.DataFrame]:
-    """Compute Stage 3 KPI tables required by project rubric."""
-    average_fare_per_airline = summarize_fare_by_group(dataframe, AIRLINE_COLUMN)
+    """Compute Stage 3 traveler-centric KPI tables."""
+    average_fare_per_route = summarize_fare_by_group(dataframe, ROUTE_COLUMN)
 
     route_frequency = (
         dataframe.groupby(ROUTE_COLUMN, dropna=False)
@@ -222,7 +275,9 @@ def compute_kpi_tables(dataframe: pd.DataFrame, top_n_routes: int) -> dict[str, 
         .sort_values("avg_total_fare_bdt", ascending=False)
     )
 
-    top_expensive_routes = (
+    booking_window_fare = compute_booking_window_fare(dataframe)
+
+    route_fare = (
         dataframe.groupby(ROUTE_COLUMN, dropna=False)[TARGET_COLUMN]
         .agg(["count", "mean", "median", "max"])
         .reset_index()
@@ -234,16 +289,31 @@ def compute_kpi_tables(dataframe: pd.DataFrame, top_n_routes: int) -> dict[str, 
                 "max": "max_total_fare_bdt",
             }
         )
-        .query("flight_count >= 10")
+    )
+
+    top_expensive_routes = (
+        route_fare[route_fare["flight_count"] >= 10]
         .sort_values("avg_total_fare_bdt", ascending=False)
         .head(top_n_routes)
     )
+    if top_expensive_routes.empty:
+        top_expensive_routes = route_fare.sort_values("avg_total_fare_bdt", ascending=False).head(top_n_routes)
+
+    top_affordable_routes = (
+        route_fare[route_fare["flight_count"] >= 10]
+        .sort_values("avg_total_fare_bdt", ascending=True)
+        .head(top_n_routes)
+    )
+    if top_affordable_routes.empty:
+        top_affordable_routes = route_fare.sort_values("avg_total_fare_bdt", ascending=True).head(top_n_routes)
 
     return {
-        "average_fare_per_airline": average_fare_per_airline,
+        "average_fare_per_route": average_fare_per_route,
         "route_frequency": route_frequency,
         "seasonal_fare": seasonal_fare,
+        "booking_window_fare": booking_window_fare,
         "top_expensive_routes": top_expensive_routes,
+        "top_affordable_routes": top_affordable_routes,
     }
 
 
@@ -261,16 +331,16 @@ def create_distribution_plot(dataframe: pd.DataFrame, column: str, title: str, o
     return output_path
 
 
-def create_airline_boxplot(dataframe: pd.DataFrame, max_airlines: int, output_path: Path) -> Path:
-    """Create and save total fare boxplot across top airlines by frequency."""
+def create_route_boxplot(dataframe: pd.DataFrame, max_routes: int, output_path: Path) -> Path:
+    """Create and save total fare boxplot across top routes by frequency."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    top_airlines = dataframe[AIRLINE_COLUMN].value_counts().head(max_airlines).index.tolist()
-    filtered_df = dataframe[dataframe[AIRLINE_COLUMN].isin(top_airlines)].copy()
+    top_routes = dataframe[ROUTE_COLUMN].value_counts().head(max_routes).index.tolist()
+    filtered_df = dataframe[dataframe[ROUTE_COLUMN].isin(top_routes)].copy()
 
     plt.figure(figsize=(12, 7))
-    sns.boxplot(data=filtered_df, x=AIRLINE_COLUMN, y=TARGET_COLUMN)
-    plt.title("Total Fare Distribution Across Top Airlines")
-    plt.xlabel("Airline")
+    sns.boxplot(data=filtered_df, x=ROUTE_COLUMN, y=TARGET_COLUMN)
+    plt.title("Total Fare Distribution Across Top Routes")
+    plt.xlabel("Route")
     plt.ylabel("Total Fare (BDT)")
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
@@ -298,6 +368,26 @@ def create_monthly_fare_plot(dataframe: pd.DataFrame, output_path: Path) -> Path
     plt.title("Average Total Fare by Departure Month")
     plt.xlabel("Departure Month")
     plt.ylabel("Average Total Fare (BDT)")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+    return output_path
+
+
+def create_booking_window_plot(booking_window_df: pd.DataFrame, output_path: Path) -> Path:
+    """Create and save average fare plot across booking windows."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(11, 6))
+    if booking_window_df.empty:
+        plt.text(0.5, 0.5, "No booking window data available", ha="center", va="center")
+        plt.axis("off")
+        plt.title("Average Fare by Booking Window (Unavailable)")
+    else:
+        sns.barplot(data=booking_window_df, x=BOOKING_WINDOW_COLUMN, y="avg_total_fare_bdt", color="#264653")
+        plt.title("Average Fare by Booking Window")
+        plt.xlabel("Booking Window")
+        plt.ylabel("Average Total Fare (BDT)")
+        plt.xticks(rotation=35, ha="right")
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     plt.close()
@@ -353,6 +443,7 @@ def build_summary_report_payload(
         "kpis": {
             "most_popular_route": most_popular_route,
             "top_5_most_expensive_routes": kpi_tables["top_expensive_routes"].head(5).to_dict(orient="records"),
+            "top_5_most_affordable_routes": kpi_tables["top_affordable_routes"].head(5).to_dict(orient="records"),
         },
         "descriptive_stats_overview": {
             "shape": descriptive_stats["shape"],
@@ -416,9 +507,9 @@ def run_stage_3(
             retry_delay_seconds=io_retry_delay_seconds,
         )
 
-        average_fare_by_airline_path = run_with_retries_and_timeout(
-            operation=lambda: save_dataframe_csv(kpi_tables["average_fare_per_airline"], stage_output_dir / "kpi_average_fare_per_airline.csv"),
-            operation_name="save_kpi_average_fare_per_airline",
+        average_fare_by_route_path = run_with_retries_and_timeout(
+            operation=lambda: save_dataframe_csv(kpi_tables["average_fare_per_route"], stage_output_dir / "kpi_average_fare_per_route.csv"),
+            operation_name="save_kpi_average_fare_per_route",
             logger_name=logger.name,
             retries=io_retries,
             timeout_seconds=io_timeout_seconds,
@@ -440,9 +531,25 @@ def run_stage_3(
             timeout_seconds=io_timeout_seconds,
             retry_delay_seconds=io_retry_delay_seconds,
         )
+        booking_window_fare_path = run_with_retries_and_timeout(
+            operation=lambda: save_dataframe_csv(kpi_tables["booking_window_fare"], stage_output_dir / "kpi_booking_window_fare.csv"),
+            operation_name="save_kpi_booking_window_fare",
+            logger_name=logger.name,
+            retries=io_retries,
+            timeout_seconds=io_timeout_seconds,
+            retry_delay_seconds=io_retry_delay_seconds,
+        )
         top_expensive_routes_path = run_with_retries_and_timeout(
             operation=lambda: save_dataframe_csv(kpi_tables["top_expensive_routes"], stage_output_dir / "kpi_top_expensive_routes.csv"),
             operation_name="save_kpi_top_expensive_routes",
+            logger_name=logger.name,
+            retries=io_retries,
+            timeout_seconds=io_timeout_seconds,
+            retry_delay_seconds=io_retry_delay_seconds,
+        )
+        top_affordable_routes_path = run_with_retries_and_timeout(
+            operation=lambda: save_dataframe_csv(kpi_tables["top_affordable_routes"], stage_output_dir / "kpi_top_affordable_routes.csv"),
+            operation_name="save_kpi_top_affordable_routes",
             logger_name=logger.name,
             retries=io_retries,
             timeout_seconds=io_timeout_seconds,
@@ -463,39 +570,13 @@ def run_stage_3(
                 timeout_seconds=io_timeout_seconds,
                 retry_delay_seconds=io_retry_delay_seconds,
             ),
-            "base_fare_distribution": run_with_retries_and_timeout(
-                operation=lambda: create_distribution_plot(
+            "route_boxplot": run_with_retries_and_timeout(
+                operation=lambda: create_route_boxplot(
                     eda_dataframe,
-                    BASE_FARE_COLUMN,
-                    "Base Fare Distribution",
-                    plots_dir / "base_fare_distribution.png",
+                    max_routes=runtime_settings.max_airlines_boxplot,
+                    output_path=plots_dir / "route_fare_boxplot.png",
                 ),
-                operation_name="plot_base_fare_distribution",
-                logger_name=logger.name,
-                retries=io_retries,
-                timeout_seconds=io_timeout_seconds,
-                retry_delay_seconds=io_retry_delay_seconds,
-            ),
-            "tax_distribution": run_with_retries_and_timeout(
-                operation=lambda: create_distribution_plot(
-                    eda_dataframe,
-                    TAX_COLUMN,
-                    "Tax and Surcharge Distribution",
-                    plots_dir / "tax_distribution.png",
-                ),
-                operation_name="plot_tax_distribution",
-                logger_name=logger.name,
-                retries=io_retries,
-                timeout_seconds=io_timeout_seconds,
-                retry_delay_seconds=io_retry_delay_seconds,
-            ),
-            "airline_boxplot": run_with_retries_and_timeout(
-                operation=lambda: create_airline_boxplot(
-                    eda_dataframe,
-                    max_airlines=runtime_settings.max_airlines_boxplot,
-                    output_path=plots_dir / "airline_fare_boxplot.png",
-                ),
-                operation_name="plot_airline_fare_boxplot",
+                operation_name="plot_route_fare_boxplot",
                 logger_name=logger.name,
                 retries=io_retries,
                 timeout_seconds=io_timeout_seconds,
@@ -504,6 +585,17 @@ def run_stage_3(
             "monthly_average_fare": run_with_retries_and_timeout(
                 operation=lambda: create_monthly_fare_plot(eda_dataframe, plots_dir / "monthly_average_fare.png"),
                 operation_name="plot_monthly_average_fare",
+                logger_name=logger.name,
+                retries=io_retries,
+                timeout_seconds=io_timeout_seconds,
+                retry_delay_seconds=io_retry_delay_seconds,
+            ),
+            "booking_window_average_fare": run_with_retries_and_timeout(
+                operation=lambda: create_booking_window_plot(
+                    kpi_tables["booking_window_fare"],
+                    plots_dir / "booking_window_average_fare.png",
+                ),
+                operation_name="plot_booking_window_average_fare",
                 logger_name=logger.name,
                 retries=io_retries,
                 timeout_seconds=io_timeout_seconds,
@@ -543,10 +635,12 @@ def run_stage_3(
             summary_report_path=summary_report_path,
             descriptive_stats_path=descriptive_stats_path,
             correlation_matrix_path=correlation_matrix_path,
-            average_fare_by_airline_path=average_fare_by_airline_path,
+            average_fare_by_route_path=average_fare_by_route_path,
             route_frequency_path=route_frequency_path,
             seasonal_fare_path=seasonal_fare_path,
+            booking_window_fare_path=booking_window_fare_path,
             top_expensive_routes_path=top_expensive_routes_path,
+            top_affordable_routes_path=top_affordable_routes_path,
             plots_directory=plots_dir,
         )
     finally:

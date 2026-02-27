@@ -169,7 +169,10 @@ class PreprocessingTests(unittest.TestCase):
         self.assertEqual(report.dropped_duplicates, 1)
         self.assertGreaterEqual(report.dropped_invalid_datetime_rows, 1)
         self.assertEqual(cleaned["Source"].str.upper().tolist(), cleaned["Source"].tolist())
-        self.assertGreaterEqual(cleaned["Base Fare (BDT)"].dropna().min(), 0)
+        self.assertNotIn("Base Fare (BDT)", cleaned.columns)
+        self.assertNotIn("Tax & Surcharge (BDT)", cleaned.columns)
+        self.assertIn("Base Fare (BDT)", report.dropped_leaky_columns)
+        self.assertIn("Tax & Surcharge (BDT)", report.dropped_leaky_columns)
         self.assertIn("Dhaka", cleaned["Source Name"].dropna().unique().tolist())
         self.assertIn("Chattogram", cleaned["Destination Name"].dropna().unique().tolist())
 

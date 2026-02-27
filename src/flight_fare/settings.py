@@ -387,3 +387,95 @@ class Stage7Settings:
         """Create required runtime directories if they do not already exist."""
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class ApiSettings:
+    """Configuration container for local REST API server behavior."""
+
+    project_root: Path
+    package_dir: Path
+    logs_dir: Path
+    host: str = "127.0.0.1"
+    port: int = 8000
+    request_timeout_seconds: float = 30.0
+    predict_retries: int = 3
+    predict_timeout_seconds: float = 30.0
+    predict_retry_delay_seconds: float = 1.0
+    log_file_name: str = "flight_fare_pipeline.log"
+    log_level: str = "INFO"
+    log_max_bytes: int = 5_000_000
+    log_backup_count: int = 5
+
+    @classmethod
+    def from_env(cls) -> "ApiSettings":
+        """Build API settings from environment variables with defaults."""
+        project_root = Path(os.getenv("FF_PROJECT_ROOT", default_project_root())).resolve()
+        package_default = project_root / "artifacts" / "stage_7" / "package" / "v1"
+        logs_dir = Path(os.getenv("FF_LOGS_DIR", project_root / "logs")).resolve()
+
+        return cls(
+            project_root=project_root,
+            package_dir=Path(os.getenv("FF_API_PACKAGE_DIR", package_default)).resolve(),
+            logs_dir=logs_dir,
+            host=os.getenv("FF_API_HOST", "127.0.0.1").strip(),
+            port=read_env_int("FF_API_PORT", 8000),
+            request_timeout_seconds=read_env_float("FF_API_REQUEST_TIMEOUT_SECONDS", 30.0),
+            predict_retries=read_env_int("FF_API_PREDICT_RETRIES", 3),
+            predict_timeout_seconds=read_env_float("FF_API_PREDICT_TIMEOUT_SECONDS", 30.0),
+            predict_retry_delay_seconds=read_env_float("FF_API_PREDICT_RETRY_DELAY_SECONDS", 1.0),
+            log_file_name=os.getenv("FF_LOG_FILE_NAME", "flight_fare_pipeline.log"),
+            log_level=os.getenv("FF_LOG_LEVEL", "INFO").upper(),
+            log_max_bytes=read_env_int("FF_LOG_MAX_BYTES", 5_000_000),
+            log_backup_count=read_env_int("FF_LOG_BACKUP_COUNT", 5),
+        )
+
+    def ensure_directories(self) -> None:
+        """Create required runtime directories if they do not already exist."""
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class StreamlitSettings:
+    """Configuration container for Streamlit frontend behavior."""
+
+    project_root: Path
+    package_dir: Path
+    logs_dir: Path
+    api_base_url: str = "http://127.0.0.1:8000"
+    request_timeout_seconds: float = 30.0
+    request_retries: int = 3
+    request_retry_delay_seconds: float = 1.0
+    preview_rows: int = 200
+    max_upload_rows: int = 5_000
+    log_file_name: str = "flight_fare_pipeline.log"
+    log_level: str = "INFO"
+    log_max_bytes: int = 5_000_000
+    log_backup_count: int = 5
+
+    @classmethod
+    def from_env(cls) -> "StreamlitSettings":
+        """Build Streamlit settings from environment variables with defaults."""
+        project_root = Path(os.getenv("FF_PROJECT_ROOT", default_project_root())).resolve()
+        package_default = project_root / "artifacts" / "stage_7" / "package" / "v1"
+        logs_dir = Path(os.getenv("FF_LOGS_DIR", project_root / "logs")).resolve()
+
+        return cls(
+            project_root=project_root,
+            package_dir=Path(os.getenv("FF_STREAMLIT_PACKAGE_DIR", package_default)).resolve(),
+            logs_dir=logs_dir,
+            api_base_url=os.getenv("FF_STREAMLIT_API_BASE_URL", "http://127.0.0.1:8000").strip(),
+            request_timeout_seconds=read_env_float("FF_STREAMLIT_REQUEST_TIMEOUT_SECONDS", 30.0),
+            request_retries=read_env_int("FF_STREAMLIT_REQUEST_RETRIES", 3),
+            request_retry_delay_seconds=read_env_float("FF_STREAMLIT_REQUEST_RETRY_DELAY_SECONDS", 1.0),
+            preview_rows=read_env_int("FF_STREAMLIT_PREVIEW_ROWS", 200),
+            max_upload_rows=read_env_int("FF_STREAMLIT_MAX_UPLOAD_ROWS", 5_000),
+            log_file_name=os.getenv("FF_LOG_FILE_NAME", "flight_fare_pipeline.log"),
+            log_level=os.getenv("FF_LOG_LEVEL", "INFO").upper(),
+            log_max_bytes=read_env_int("FF_LOG_MAX_BYTES", 5_000_000),
+            log_backup_count=read_env_int("FF_LOG_BACKUP_COUNT", 5),
+        )
+
+    def ensure_directories(self) -> None:
+        """Create required runtime directories if they do not already exist."""
+        self.logs_dir.mkdir(parents=True, exist_ok=True)

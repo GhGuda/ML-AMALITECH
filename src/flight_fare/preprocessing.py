@@ -17,6 +17,7 @@ TARGET_COLUMN = "Total Fare (BDT)"
 DATE_COLUMN = "Departure Date & Time"
 ARRIVAL_DATE_COLUMN = "Arrival Date & Time"
 FARE_COLUMNS = ("Base Fare (BDT)", "Tax & Surcharge (BDT)", TARGET_COLUMN)
+LEAKY_FEATURE_COLUMNS = ("Base Fare (BDT)", "Tax & Surcharge (BDT)")
 POTENTIAL_NUMERIC_COLUMNS = ("Base Fare (BDT)", "Tax & Surcharge (BDT)", "Duration (hrs)", "Days Before Departure")
 POTENTIAL_CATEGORICAL_COLUMNS = (
     "Airline",
@@ -48,6 +49,7 @@ class CleaningReport:
     dropped_invalid_target_rows: int
     dropped_invalid_datetime_rows: int
     dropped_irrelevant_columns: list[str]
+    dropped_leaky_columns: list[str]
     negative_values_replaced: dict[str, int]
     newly_introduced_numeric_nulls: dict[str, int]
 
@@ -157,11 +159,18 @@ def clean_and_engineer_features(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, 
 
     if TARGET_COLUMN in working_df.columns:
         missing_total_fare = working_df[TARGET_COLUMN].isna()
-        can_reconstruct_total = missing_total_fare & working_df["Base Fare (BDT)"].notna() & working_df["Tax & Surcharge (BDT)"].notna()
-        working_df.loc[can_reconstruct_total, TARGET_COLUMN] = (
-            working_df.loc[can_reconstruct_total, "Base Fare (BDT)"]
-            + working_df.loc[can_reconstruct_total, "Tax & Surcharge (BDT)"]
-        )
+        has_base_fare = "Base Fare (BDT)" in working_df.columns
+        has_tax = "Tax & Surcharge (BDT)" in working_df.columns
+        if has_base_fare and has_tax:
+            can_reconstruct_total = (
+                missing_total_fare
+                & working_df["Base Fare (BDT)"].notna()
+                & working_df["Tax & Surcharge (BDT)"].notna()
+            )
+            working_df.loc[can_reconstruct_total, TARGET_COLUMN] = (
+                working_df.loc[can_reconstruct_total, "Base Fare (BDT)"]
+                + working_df.loc[can_reconstruct_total, "Tax & Surcharge (BDT)"]
+            )
 
     if DATE_COLUMN in working_df.columns:
         working_df[DATE_COLUMN] = pd.to_datetime(working_df[DATE_COLUMN], errors="coerce")
@@ -182,6 +191,11 @@ def clean_and_engineer_features(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, 
         working_df["Departure Weekday"] = working_df[DATE_COLUMN].dt.weekday.astype(int)
         working_df["Departure Season"] = working_df["Departure Month"].apply(month_to_season)
 
+    dropped_leaky_columns = [column for column in LEAKY_FEATURE_COLUMNS if column in working_df.columns]
+    if dropped_leaky_columns:
+        # Remove leakage-only fare components from downstream modeling and inference inputs.
+        working_df = working_df.drop(columns=dropped_leaky_columns)
+
     output_rows = int(len(working_df))
     report = CleaningReport(
         input_rows=input_rows,
@@ -190,6 +204,7 @@ def clean_and_engineer_features(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, 
         dropped_invalid_target_rows=dropped_invalid_target_rows,
         dropped_invalid_datetime_rows=invalid_datetime_rows,
         dropped_irrelevant_columns=dropped_irrelevant_columns,
+        dropped_leaky_columns=dropped_leaky_columns,
         negative_values_replaced=negative_values_replaced,
         newly_introduced_numeric_nulls=newly_introduced_numeric_nulls,
     )
@@ -208,6 +223,11 @@ def select_modeling_features(dataframe: pd.DataFrame) -> tuple[pd.DataFrame, pd.
     for date_column in (DATE_COLUMN, ARRIVAL_DATE_COLUMN):
         if date_column in x.columns:
             x = x.drop(columns=[date_column])
+
+    # Guardrail for backwards-compatibility: ensure leaky columns never reach models.
+    for leaky_column in LEAKY_FEATURE_COLUMNS:
+        if leaky_column in x.columns:
+            x = x.drop(columns=[leaky_column])
     return x, y
 
 

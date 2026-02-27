@@ -80,6 +80,12 @@ class Stage2PipelineTests(unittest.TestCase):
             self.assertEqual(report["stage"], 2)
             self.assertEqual(report["split"]["train_rows"] + report["split"]["test_rows"], 24)
             self.assertGreater(report["preprocessing"]["processed_feature_count"], 0)
+            self.assertIn("Base Fare (BDT)", report["cleaning_report"]["dropped_leaky_columns"])
+            self.assertIn("Tax & Surcharge (BDT)", report["cleaning_report"]["dropped_leaky_columns"])
+
+            cleaned_df = pd.read_csv(outputs.cleaned_dataset_path)
+            self.assertNotIn("Base Fare (BDT)", cleaned_df.columns)
+            self.assertNotIn("Tax & Surcharge (BDT)", cleaned_df.columns)
 
 
 if __name__ == "__main__":

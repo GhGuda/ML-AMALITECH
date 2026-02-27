@@ -28,6 +28,7 @@ DESTINATION_COLUMN = "Destination"
 SEASON_COLUMN = "Departure Season"
 DEPARTURE_MONTH_COLUMN = "Departure Month"
 ROUTE_COLUMN = "Route"
+LEAKY_FEATURE_NAMES = {"Base Fare (BDT)", "Tax & Surcharge (BDT)"}
 
 
 class Stage6Error(RuntimeError):
@@ -45,7 +46,7 @@ class Stage6Outputs:
     summary_report_path: Path
     stakeholder_report_path: Path
     top_feature_table_path: Path
-    airline_pricing_path: Path
+    airline_fare_summary_path: Path
     seasonal_pricing_path: Path
     route_season_hotspots_path: Path
     plots_directory: Path
@@ -183,6 +184,11 @@ def prepare_feature_impact_table(feature_impact_df: pd.DataFrame, top_feature_co
         raise ValueError(f"Missing feature impact columns: {missing_text}")
 
     working_df = feature_impact_df.copy()
+    # Enforce leakage safety even when stale upstream artifacts contain leaked fare components.
+    normalized_names = working_df["feature_name"].astype(str).apply(normalize_feature_name)
+    leaky_mask = normalized_names.isin(LEAKY_FEATURE_NAMES)
+    working_df = working_df.loc[~leaky_mask].copy()
+
     if "abs_importance" not in working_df.columns:
         working_df["abs_importance"] = working_df["importance"].abs()
     working_df["readable_feature"] = working_df["feature_name"].apply(normalize_feature_name)
@@ -243,8 +249,8 @@ def ensure_route_column(dataframe: pd.DataFrame) -> pd.DataFrame:
     return working_df
 
 
-def build_airline_pricing_summary(dataframe: pd.DataFrame, target_column: str) -> pd.DataFrame:
-    """Compute airline-level pricing summary with premium versus global average."""
+def build_airline_fare_summary(dataframe: pd.DataFrame, target_column: str) -> pd.DataFrame:
+    """Compute airline-level fare summary to support traveler cost comparison."""
     global_avg = float(dataframe[target_column].mean())
     summary_df = (
         dataframe.groupby(AIRLINE_COLUMN, dropna=False)[target_column]
@@ -261,7 +267,10 @@ def build_airline_pricing_summary(dataframe: pd.DataFrame, target_column: str) -
             }
         )
     )
-    summary_df["premium_vs_global_pct"] = ((summary_df["avg_total_fare_bdt"] / global_avg) - 1) * 100
+    if global_avg == 0:
+        summary_df["avg_fare_delta_vs_global_pct"] = 0.0
+    else:
+        summary_df["avg_fare_delta_vs_global_pct"] = ((summary_df["avg_total_fare_bdt"] / global_avg) - 1) * 100
     return summary_df.sort_values("avg_total_fare_bdt", ascending=False).reset_index(drop=True)
 
 
@@ -327,15 +336,15 @@ def create_feature_driver_plot(top_feature_df: pd.DataFrame, output_path: Path) 
     return output_path
 
 
-def create_airline_premium_plot(airline_summary_df: pd.DataFrame, output_path: Path) -> Path:
-    """Save airline premium plot for highest-volume airlines."""
+def create_airline_fare_delta_plot(airline_summary_df: pd.DataFrame, output_path: Path) -> Path:
+    """Save airline fare-delta plot for traveler comparison across major airlines."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plot_df = airline_summary_df.head(15).sort_values("premium_vs_global_pct", ascending=True)
+    plot_df = airline_summary_df.head(15).sort_values("avg_fare_delta_vs_global_pct", ascending=True)
     plt.figure(figsize=(10, 7))
-    plt.barh(plot_df[AIRLINE_COLUMN], plot_df["premium_vs_global_pct"], color="#e76f51")
+    plt.barh(plot_df[AIRLINE_COLUMN], plot_df["avg_fare_delta_vs_global_pct"], color="#e76f51")
     plt.axvline(0, color="#264653", linewidth=1.2)
-    plt.title("Airline Pricing Premium vs Global Average")
-    plt.xlabel("Premium vs Global Avg (%)")
+    plt.title("Airline Average Fare Delta vs Global Average")
+    plt.xlabel("Fare Delta vs Global Avg (%)")
     plt.ylabel("Airline")
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
@@ -365,13 +374,24 @@ def build_stakeholder_report(
     seasonal_df: pd.DataFrame,
     route_hotspots_df: pd.DataFrame,
 ) -> str:
-    """Build markdown report focused on non-technical stakeholder interpretation."""
+    """Build markdown report focused on non-technical traveler-facing insights."""
     top_features_lines = [
         f"- `{row['readable_feature']}`: {row['importance_pct']:.2f}% relative importance"
         for _, row in top_feature_df.head(5).iterrows()
     ]
-    highest_airline = airline_summary_df.iloc[0]
-    highest_season = seasonal_df.iloc[0]
+    if not top_features_lines:
+        top_features_lines = ["- No non-leaky feature drivers were available in the provided feature-impact table."]
+    if airline_summary_df.empty:
+        highest_airline = {AIRLINE_COLUMN: "unknown", "avg_total_fare_bdt": 0.0}
+        lowest_airline = {AIRLINE_COLUMN: "unknown", "avg_total_fare_bdt": 0.0}
+    else:
+        highest_airline = airline_summary_df.iloc[0]
+        lowest_airline = airline_summary_df.sort_values("avg_total_fare_bdt", ascending=True).iloc[0]
+
+    if seasonal_df.empty:
+        highest_season = {SEASON_COLUMN: "unknown", "avg_total_fare_bdt": 0.0}
+    else:
+        highest_season = seasonal_df.iloc[0]
     top_hotspot = route_hotspots_df.iloc[0] if not route_hotspots_df.empty else None
 
     hotspot_line = (
@@ -390,15 +410,16 @@ def build_stakeholder_report(
 ## Key Fare Drivers
 {chr(10).join(top_features_lines)}
 
-## Pricing Strategy Insights
-- Highest average pricing airline: `{highest_airline[AIRLINE_COLUMN]}` with average fare `{highest_airline['avg_total_fare_bdt']:.2f}` BDT
-- Highest pricing season: `{highest_season[SEASON_COLUMN]}` with average fare `{highest_season['avg_total_fare_bdt']:.2f}` BDT
+## Traveler Cost Insights
+- Highest average fare airline: `{highest_airline[AIRLINE_COLUMN]}` with average fare `{highest_airline['avg_total_fare_bdt']:.2f}` BDT
+- Most affordable airline on average: `{lowest_airline[AIRLINE_COLUMN]}` with average fare `{lowest_airline['avg_total_fare_bdt']:.2f}` BDT
+- Highest-fare season: `{highest_season[SEASON_COLUMN]}` with average fare `{highest_season['avg_total_fare_bdt']:.2f}` BDT
 {hotspot_line}
 
 ## Recommendations
-- Prioritize dynamic pricing guardrails around base fare and surcharge components, since these dominate model influence.
-- Review pricing policy for premium airlines and high-fare seasons to balance margin targets with competitiveness.
-- Monitor identified route-season hotspots for demand spikes and optimize seat allocation plus campaign timing.
+- Book in lower-fare seasons whenever travel dates are flexible.
+- Compare carriers on the same route because average fare differences are material.
+- Avoid identified route-season hotspots or book earlier when those routes are unavoidable.
 """
 
 
@@ -447,7 +468,7 @@ def run_stage_6(
 
         enriched_df = ensure_route_column(ensure_season_column(cleaned_df))
         top_feature_df = prepare_feature_impact_table(feature_impact_df, top_feature_count=runtime_settings.top_feature_count)
-        airline_summary_df = build_airline_pricing_summary(enriched_df, target_column=target_column)
+        airline_summary_df = build_airline_fare_summary(enriched_df, target_column=target_column)
         seasonal_summary_df = build_seasonal_pricing_summary(enriched_df, target_column=target_column)
         route_hotspots_df = build_route_season_hotspots(
             enriched_df,
@@ -479,9 +500,9 @@ def run_stage_6(
             timeout_seconds=io_timeout_seconds,
             retry_delay_seconds=io_retry_delay_seconds,
         )
-        airline_pricing_path = run_with_retries_and_timeout(
-            operation=lambda: save_dataframe_csv(airline_summary_df, stage_output_dir / "airline_pricing_summary.csv"),
-            operation_name="save_airline_pricing_summary",
+        airline_fare_summary_path = run_with_retries_and_timeout(
+            operation=lambda: save_dataframe_csv(airline_summary_df, stage_output_dir / "airline_fare_summary.csv"),
+            operation_name="save_airline_fare_summary",
             logger_name=logger.name,
             retries=io_retries,
             timeout_seconds=io_timeout_seconds,
@@ -521,8 +542,8 @@ def run_stage_6(
             retry_delay_seconds=io_retry_delay_seconds,
         )
         airline_plot_path = run_with_retries_and_timeout(
-            operation=lambda: create_airline_premium_plot(airline_summary_df, plots_dir / "airline_pricing_premium.png"),
-            operation_name="plot_airline_pricing_premium",
+            operation=lambda: create_airline_fare_delta_plot(airline_summary_df, plots_dir / "airline_fare_delta.png"),
+            operation_name="plot_airline_fare_delta",
             logger_name=logger.name,
             retries=io_retries,
             timeout_seconds=io_timeout_seconds,
@@ -542,11 +563,16 @@ def run_stage_6(
             "best_model_name": str(best_model.get("model_name", "Unknown")),
             "best_model_test_rmse": float(best_model.get("test_metrics", {}).get("rmse", 0.0)),
             "top_driver": top_feature_df.iloc[0]["readable_feature"] if not top_feature_df.empty else None,
-            "top_airline": airline_summary_df.iloc[0][AIRLINE_COLUMN] if not airline_summary_df.empty else None,
+            "highest_fare_airline": airline_summary_df.iloc[0][AIRLINE_COLUMN] if not airline_summary_df.empty else None,
+            "most_affordable_airline": (
+                airline_summary_df.sort_values("avg_total_fare_bdt", ascending=True).iloc[0][AIRLINE_COLUMN]
+                if not airline_summary_df.empty
+                else None
+            ),
             "top_season": seasonal_summary_df.iloc[0][SEASON_COLUMN] if not seasonal_summary_df.empty else None,
             "artifacts": {
                 "top_feature_table_path": str(top_feature_table_path),
-                "airline_pricing_path": str(airline_pricing_path),
+                "airline_fare_summary_path": str(airline_fare_summary_path),
                 "seasonal_pricing_path": str(seasonal_pricing_path),
                 "route_season_hotspots_path": str(route_season_hotspots_path),
                 "stakeholder_report_path": str(stakeholder_report_path),
@@ -566,13 +592,13 @@ def run_stage_6(
 
         logger.info("Stage 6 completed successfully.")
         logger.info("Top feature driver: %s", summary_payload["top_driver"])
-        logger.info("Top airline by average fare: %s", summary_payload["top_airline"])
+        logger.info("Highest fare airline: %s", summary_payload["highest_fare_airline"])
 
         return Stage6Outputs(
             summary_report_path=summary_report_path,
             stakeholder_report_path=stakeholder_report_path,
             top_feature_table_path=top_feature_table_path,
-            airline_pricing_path=airline_pricing_path,
+            airline_fare_summary_path=airline_fare_summary_path,
             seasonal_pricing_path=seasonal_pricing_path,
             route_season_hotspots_path=route_season_hotspots_path,
             plots_directory=plots_dir,

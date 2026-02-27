@@ -33,8 +33,6 @@ def build_stage3_dataset(rows: int = 40) -> pd.DataFrame:
                 "Aircraft Type": "A320" if index % 2 == 0 else "B737",
                 "Class": "Economy",
                 "Booking Source": "Web" if index % 2 == 0 else "App",
-                "Base Fare (BDT)": 1000 + (index * 10),
-                "Tax & Surcharge (BDT)": 200 + (index * 5),
                 "Total Fare (BDT)": 1200 + (index * 15),
                 "Seasonality": "Monsoon",
                 "Days Before Departure": 5 + (index % 12),
@@ -83,10 +81,12 @@ class Stage3EdaTests(unittest.TestCase):
             self.assertTrue(outputs.summary_report_path.exists())
             self.assertTrue(outputs.descriptive_stats_path.exists())
             self.assertTrue(outputs.correlation_matrix_path.exists())
-            self.assertTrue(outputs.average_fare_by_airline_path.exists())
+            self.assertTrue(outputs.average_fare_by_route_path.exists())
             self.assertTrue(outputs.route_frequency_path.exists())
             self.assertTrue(outputs.seasonal_fare_path.exists())
+            self.assertTrue(outputs.booking_window_fare_path.exists())
             self.assertTrue(outputs.top_expensive_routes_path.exists())
+            self.assertTrue(outputs.top_affordable_routes_path.exists())
             self.assertTrue(outputs.plots_directory.exists())
 
             summary = json.loads(outputs.summary_report_path.read_text(encoding="utf-8"))

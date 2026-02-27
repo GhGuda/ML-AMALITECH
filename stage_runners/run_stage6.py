@@ -76,7 +76,7 @@ def main() -> int:
     print(f"Summary report: {outputs.summary_report_path}")
     print(f"Stakeholder report: {outputs.stakeholder_report_path}")
     print(f"Top feature drivers: {outputs.top_feature_table_path}")
-    print(f"Airline pricing summary: {outputs.airline_pricing_path}")
+    print(f"Airline fare summary: {outputs.airline_fare_summary_path}")
     print(f"Seasonal pricing summary: {outputs.seasonal_pricing_path}")
     print(f"Route-season hotspots: {outputs.route_season_hotspots_path}")
     print(f"Plots directory: {outputs.plots_directory}")

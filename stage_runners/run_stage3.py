@@ -22,7 +22,7 @@ def build_args() -> argparse.Namespace:
     parser.add_argument("--dataset-path", type=Path, default=None, help="Optional path to Stage 3 input dataset CSV.")
     parser.add_argument("--log-level", type=str, default=None, help="Optional runtime log level.")
     parser.add_argument("--top-n-routes", type=int, default=None, help="Number of top expensive routes to include.")
-    parser.add_argument("--max-airlines-boxplot", type=int, default=None, help="Maximum airlines to include in boxplot.")
+    parser.add_argument("--max-airlines-boxplot", type=int, default=None, help="Maximum routes to include in fare boxplot.")
     parser.add_argument("--retries", type=int, default=3, help="Number of dataset load retries.")
     parser.add_argument("--timeout-seconds", type=float, default=30.0, help="Dataset load timeout per attempt.")
     parser.add_argument("--retry-delay-seconds", type=float, default=1.5, help="Delay between load retries.")
@@ -64,10 +64,12 @@ def main() -> int:
     print(f"Summary report: {outputs.summary_report_path}")
     print(f"Descriptive stats: {outputs.descriptive_stats_path}")
     print(f"Correlation matrix: {outputs.correlation_matrix_path}")
-    print(f"Average fare per airline: {outputs.average_fare_by_airline_path}")
+    print(f"Average fare per route: {outputs.average_fare_by_route_path}")
     print(f"Route frequency: {outputs.route_frequency_path}")
     print(f"Seasonal fare: {outputs.seasonal_fare_path}")
+    print(f"Booking window fare: {outputs.booking_window_fare_path}")
     print(f"Top expensive routes: {outputs.top_expensive_routes_path}")
+    print(f"Top affordable routes: {outputs.top_affordable_routes_path}")
     print(f"Plots directory: {outputs.plots_directory}")
     return 0
 

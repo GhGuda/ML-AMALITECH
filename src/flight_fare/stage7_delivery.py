@@ -16,7 +16,7 @@ from typing import Any, Callable, TypeVar
 import pandas as pd
 
 from .logging_utils import configure_logging, shutdown_logger_handlers
-from .preprocessing import TARGET_COLUMN, clean_and_engineer_features
+from .preprocessing import LEAKY_FEATURE_COLUMNS, TARGET_COLUMN, clean_and_engineer_features
 from .settings import Stage7Settings
 
 T = TypeVar("T")
@@ -194,6 +194,13 @@ def get_expected_input_columns(preprocessing_report: dict[str, Any]) -> list[str
     expected_columns = [*numeric_cols, *categorical_cols]
     if not expected_columns:
         raise ValueError("Preprocessing report does not contain expected input columns.")
+    leaky_columns = sorted(set(expected_columns).intersection(LEAKY_FEATURE_COLUMNS))
+    if leaky_columns:
+        leaked = ", ".join(leaky_columns)
+        raise ValueError(
+            f"Preprocessing report contains leaky columns ({leaked}). "
+            "Re-run Stage 2 and downstream modeling without leakage."
+        )
     return expected_columns
 
 
@@ -219,6 +226,7 @@ def build_input_schema(preprocessing_report: dict[str, Any], expected_columns: l
             "For raw data inference, include at minimum the same semantic fields used in Stage 2 cleaning.",
             "Departure-derived fields (Departure Month/Day/Weekday/Season) can be generated from Departure Date & Time.",
             "Missing values are handled by the packaged preprocessor using imputation strategies from Stage 2.",
+            "Do not include leaked fare components such as base fare or tax as model input fields.",
         ],
     }
 

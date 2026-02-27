@@ -39,14 +39,14 @@ def _build_feature_impact() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "feature_name": [
-                "num__Base Fare (BDT)",
-                "num__Tax & Surcharge (BDT)",
+                "num__Days Before Departure",
                 "cat__Class_Business",
                 "num__Duration (hrs)",
+                "cat__Stopovers_1 Stop",
             ],
-            "importance": [0.72, 0.21, 0.05, 0.02],
+            "importance": [0.52, 0.23, 0.15, 0.10],
             "importance_type": ["feature_importance"] * 4,
-            "abs_importance": [0.72, 0.21, 0.05, 0.02],
+            "abs_importance": [0.52, 0.23, 0.15, 0.10],
         }
     )
 
@@ -102,7 +102,7 @@ class Stage6InterpretationTests(unittest.TestCase):
             self.assertTrue(outputs.summary_report_path.exists())
             self.assertTrue(outputs.stakeholder_report_path.exists())
             self.assertTrue(outputs.top_feature_table_path.exists())
-            self.assertTrue(outputs.airline_pricing_path.exists())
+            self.assertTrue(outputs.airline_fare_summary_path.exists())
             self.assertTrue(outputs.seasonal_pricing_path.exists())
             self.assertTrue(outputs.route_season_hotspots_path.exists())
             self.assertTrue(outputs.plots_directory.exists())
@@ -115,6 +115,8 @@ class Stage6InterpretationTests(unittest.TestCase):
             top_features = pd.read_csv(outputs.top_feature_table_path)
             self.assertEqual(len(top_features), 3)
             self.assertIn("importance_pct", top_features.columns)
+            self.assertNotIn("Base Fare (BDT)", top_features["readable_feature"].tolist())
+            self.assertNotIn("Tax & Surcharge (BDT)", top_features["readable_feature"].tolist())
 
 
 if __name__ == "__main__":

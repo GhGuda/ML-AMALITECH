@@ -71,6 +71,11 @@ class DataLoaderTests(unittest.TestCase):
         with self.assertRaises(SchemaValidationError):
             validate_dataset_schema(dataframe)
 
+    def test_validate_dataset_schema_allows_missing_fare_components(self) -> None:
+        """Schema validation should allow datasets that omit base/tax fare components."""
+        dataframe = _sample_dataframe().drop(columns=["Base Fare (BDT)", "Tax & Surcharge (BDT)"])
+        validate_dataset_schema(dataframe)
+
     def test_load_flight_dataset_retries_then_succeeds(self) -> None:
         """Loader retries on transient failures and then returns data."""
         call_counter = {"count": 0}

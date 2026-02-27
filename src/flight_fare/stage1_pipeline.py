@@ -29,20 +29,23 @@ def write_problem_definition(output_path: Path) -> Path:
 Generated at: {now_utc}
 
 ## Business Objective
-Estimate flight ticket prices so travel platforms and airline teams can improve pricing strategy and customer recommendations.
+Estimate flight ticket prices so travelers can plan cheaper trips and choose better routes, seasons, and booking windows.
 
 ## Machine Learning Task
 - Task type: Supervised regression
 - Target variable: `Total Fare (BDT)`
 - Core input features:
-  - `Airline`
   - `Source`
   - `Destination`
   - `Departure Date & Time`
-  - `Base Fare (BDT)`
-  - `Tax & Surcharge (BDT)`
+  - `Airline`
   - `Duration (hrs)`
   - `Stopovers`
+  - `Class`
+  - `Days Before Departure`
+
+## Leakage Policy
+- `Base Fare (BDT)` and `Tax & Surcharge (BDT)` are excluded from model features in later stages because they leak target information.
 
 ## Stage 1 Deliverables
 - Production-ready logging configuration with rotating file handlers
