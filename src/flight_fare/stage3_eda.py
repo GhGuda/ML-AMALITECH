@@ -317,41 +317,51 @@ def compute_kpi_tables(dataframe: pd.DataFrame, top_n_routes: int) -> dict[str, 
     }
 
 
+def build_distribution_figure(dataframe: pd.DataFrame, column: str, title: str) -> plt.Figure:
+    """Build histogram figure for a numeric fare column."""
+    fig, axis = plt.subplots(figsize=(10, 6))
+    sns.histplot(dataframe[column].dropna(), bins=40, kde=True, ax=axis)
+    axis.set_title(title)
+    axis.set_xlabel(column)
+    axis.set_ylabel("Frequency")
+    fig.tight_layout()
+    return fig
+
+
 def create_distribution_plot(dataframe: pd.DataFrame, column: str, title: str, output_path: Path) -> Path:
     """Create and save histogram plot for a numeric fare column."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(10, 6))
-    sns.histplot(dataframe[column].dropna(), bins=40, kde=True)
-    plt.title(title)
-    plt.xlabel(column)
-    plt.ylabel("Frequency")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
-    plt.close()
+    fig = build_distribution_figure(dataframe=dataframe, column=column, title=title)
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
     return output_path
+
+
+def build_route_boxplot_figure(dataframe: pd.DataFrame, max_routes: int) -> plt.Figure:
+    """Build total fare boxplot figure across top routes by frequency."""
+    top_routes = dataframe[ROUTE_COLUMN].value_counts().head(max_routes).index.tolist()
+    filtered_df = dataframe[dataframe[ROUTE_COLUMN].isin(top_routes)].copy()
+    fig, axis = plt.subplots(figsize=(12, 7))
+    sns.boxplot(data=filtered_df, x=ROUTE_COLUMN, y=TARGET_COLUMN, ax=axis)
+    axis.set_title("Total Fare Distribution Across Top Routes")
+    axis.set_xlabel("Route")
+    axis.set_ylabel("Total Fare (BDT)")
+    axis.tick_params(axis="x", rotation=45)
+    fig.tight_layout()
+    return fig
 
 
 def create_route_boxplot(dataframe: pd.DataFrame, max_routes: int, output_path: Path) -> Path:
     """Create and save total fare boxplot across top routes by frequency."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    top_routes = dataframe[ROUTE_COLUMN].value_counts().head(max_routes).index.tolist()
-    filtered_df = dataframe[dataframe[ROUTE_COLUMN].isin(top_routes)].copy()
-
-    plt.figure(figsize=(12, 7))
-    sns.boxplot(data=filtered_df, x=ROUTE_COLUMN, y=TARGET_COLUMN)
-    plt.title("Total Fare Distribution Across Top Routes")
-    plt.xlabel("Route")
-    plt.ylabel("Total Fare (BDT)")
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
-    plt.close()
+    fig = build_route_boxplot_figure(dataframe=dataframe, max_routes=max_routes)
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
     return output_path
 
 
-def create_monthly_fare_plot(dataframe: pd.DataFrame, output_path: Path) -> Path:
-    """Create and save average fare-by-month bar chart."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+def build_monthly_fare_figure(dataframe: pd.DataFrame) -> plt.Figure:
+    """Build average fare-by-month bar chart figure."""
     monthly_source = dataframe.copy()
     monthly_source[DEPARTURE_MONTH_COLUMN] = pd.to_numeric(monthly_source[DEPARTURE_MONTH_COLUMN], errors="coerce").fillna(1).astype(int)
 
@@ -363,51 +373,70 @@ def create_monthly_fare_plot(dataframe: pd.DataFrame, output_path: Path) -> Path
         .sort_values(DEPARTURE_MONTH_COLUMN)
     )
 
-    plt.figure(figsize=(10, 6))
-    sns.barplot(data=monthly, x=DEPARTURE_MONTH_COLUMN, y="avg_total_fare_bdt", color="#2a9d8f")
-    plt.title("Average Total Fare by Departure Month")
-    plt.xlabel("Departure Month")
-    plt.ylabel("Average Total Fare (BDT)")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
-    plt.close()
+    fig, axis = plt.subplots(figsize=(10, 6))
+    sns.barplot(data=monthly, x=DEPARTURE_MONTH_COLUMN, y="avg_total_fare_bdt", color="#2a9d8f", ax=axis)
+    axis.set_title("Average Total Fare by Departure Month")
+    axis.set_xlabel("Departure Month")
+    axis.set_ylabel("Average Total Fare (BDT)")
+    fig.tight_layout()
+    return fig
+
+
+def create_monthly_fare_plot(dataframe: pd.DataFrame, output_path: Path) -> Path:
+    """Create and save average fare-by-month bar chart."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig = build_monthly_fare_figure(dataframe=dataframe)
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
     return output_path
+
+
+def build_booking_window_figure(booking_window_df: pd.DataFrame) -> plt.Figure:
+    """Build average fare chart across booking windows."""
+    fig, axis = plt.subplots(figsize=(11, 6))
+    if booking_window_df.empty:
+        axis.text(0.5, 0.5, "No booking window data available", ha="center", va="center")
+        axis.axis("off")
+        axis.set_title("Average Fare by Booking Window (Unavailable)")
+    else:
+        sns.barplot(data=booking_window_df, x=BOOKING_WINDOW_COLUMN, y="avg_total_fare_bdt", color="#264653", ax=axis)
+        axis.set_title("Average Fare by Booking Window")
+        axis.set_xlabel("Booking Window")
+        axis.set_ylabel("Average Total Fare (BDT)")
+        axis.tick_params(axis="x", rotation=35)
+    fig.tight_layout()
+    return fig
 
 
 def create_booking_window_plot(booking_window_df: pd.DataFrame, output_path: Path) -> Path:
     """Create and save average fare plot across booking windows."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(11, 6))
-    if booking_window_df.empty:
-        plt.text(0.5, 0.5, "No booking window data available", ha="center", va="center")
-        plt.axis("off")
-        plt.title("Average Fare by Booking Window (Unavailable)")
-    else:
-        sns.barplot(data=booking_window_df, x=BOOKING_WINDOW_COLUMN, y="avg_total_fare_bdt", color="#264653")
-        plt.title("Average Fare by Booking Window")
-        plt.xlabel("Booking Window")
-        plt.ylabel("Average Total Fare (BDT)")
-        plt.xticks(rotation=35, ha="right")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
-    plt.close()
+    fig = build_booking_window_figure(booking_window_df=booking_window_df)
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
     return output_path
+
+
+def build_correlation_heatmap_figure(correlation_matrix: pd.DataFrame) -> plt.Figure:
+    """Build correlation heatmap figure for numeric features."""
+    fig, axis = plt.subplots(figsize=(10, 8))
+    if correlation_matrix.empty:
+        axis.text(0.5, 0.5, "No numeric features available", ha="center", va="center")
+        axis.axis("off")
+        axis.set_title("Correlation Heatmap (Unavailable)")
+    else:
+        sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="YlGnBu", square=True, cbar=True, ax=axis)
+        axis.set_title("Correlation Heatmap (Numeric Features)")
+    fig.tight_layout()
+    return fig
 
 
 def create_correlation_heatmap(correlation_matrix: pd.DataFrame, output_path: Path) -> Path:
     """Create and save correlation heatmap for numeric features."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(10, 8))
-    if correlation_matrix.empty:
-        plt.text(0.5, 0.5, "No numeric features available", ha="center", va="center")
-        plt.axis("off")
-        plt.title("Correlation Heatmap (Unavailable)")
-    else:
-        sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="YlGnBu", square=True, cbar=True)
-        plt.title("Correlation Heatmap (Numeric Features)")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
-    plt.close()
+    fig = build_correlation_heatmap_figure(correlation_matrix=correlation_matrix)
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
     return output_path
 
 

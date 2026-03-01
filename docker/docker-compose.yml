@@ -1,0 +1,149 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: flight-fare:latest
+    container_name: flight-fare-api
+    command: ["python", "-m", "stage_runners.run_api", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      FF_API_PACKAGE_DIR: /app/artifacts/stage_7/package/v1
+      FF_LOGS_DIR: /app/logs
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  streamlit:
+    image: flight-fare:latest
+    container_name: flight-fare-streamlit
+    depends_on:
+      - api
+    command:
+      [
+        "streamlit",
+        "run",
+        "stage_runners/run_streamlit.py",
+        "--server.address=0.0.0.0",
+        "--server.port=8501",
+        "--server.headless=true"
+      ]
+    environment:
+      FF_STREAMLIT_API_BASE_URL: http://api:8000
+      FF_STREAMLIT_PACKAGE_DIR: /app/artifacts/stage_7/package/v1
+      FF_LOGS_DIR: /app/logs
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  airflow-db:
+    image: postgres:15
+    container_name: flight-fare-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.airflow
+    image: flight-fare-airflow:latest
+    container_name: flight-fare-airflow-init
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      PYTHONPATH: /opt/airflow:/opt/airflow/src
+      FF_DATASET_PATH: /opt/airflow/notebook/raw_bangladesh_data/Flight_Price_Dataset_of_Bangladesh.csv
+      FF_ARTIFACTS_DIR: /opt/airflow/artifacts
+      FF_LOGS_DIR: /opt/airflow/logs
+    command:
+      [
+        "bash",
+        "-c",
+        "airflow db migrate && airflow users create --username admin --password admin --firstname Air --lastname Flow --role Admin --email admin@example.com || true"
+      ]
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./artifacts:/opt/airflow/artifacts
+      - ./logs:/opt/airflow/logs
+      - ./notebook:/opt/airflow/notebook
+    restart: "no"
+
+  airflow-webserver:
+    image: flight-fare-airflow:latest
+    container_name: flight-fare-airflow-webserver
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      PYTHONPATH: /opt/airflow:/opt/airflow/src
+      FF_DATASET_PATH: /opt/airflow/notebook/raw_bangladesh_data/Flight_Price_Dataset_of_Bangladesh.csv
+      FF_ARTIFACTS_DIR: /opt/airflow/artifacts
+      FF_LOGS_DIR: /opt/airflow/logs
+    command: ["airflow", "webserver"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./artifacts:/opt/airflow/artifacts
+      - ./logs:/opt/airflow/logs
+      - ./notebook:/opt/airflow/notebook
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: flight-fare-airflow:latest
+    container_name: flight-fare-airflow-scheduler
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      PYTHONPATH: /opt/airflow:/opt/airflow/src
+      FF_DATASET_PATH: /opt/airflow/notebook/raw_bangladesh_data/Flight_Price_Dataset_of_Bangladesh.csv
+      FF_ARTIFACTS_DIR: /opt/airflow/artifacts
+      FF_LOGS_DIR: /opt/airflow/logs
+    command: ["airflow", "scheduler"]
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./artifacts:/opt/airflow/artifacts
+      - ./logs:/opt/airflow/logs
+      - ./notebook:/opt/airflow/notebook
+    restart: unless-stopped
+
+volumes:
+  airflow_postgres_data:

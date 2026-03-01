@@ -1,0 +1,25 @@
+[2026-03-01T12:21:17.605+0000] {local_task_job_runner.py:123} INFO - ::group::Pre task execution logs
+[2026-03-01T12:21:17.651+0000] {taskinstance.py:2614} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: flight_fare_stages_2_to_7.stage_2_preprocessing manual__2026-03-01T12:18:51.768282+00:00 [queued]>
+[2026-03-01T12:21:17.674+0000] {taskinstance.py:2614} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: flight_fare_stages_2_to_7.stage_2_preprocessing manual__2026-03-01T12:18:51.768282+00:00 [queued]>
+[2026-03-01T12:21:17.676+0000] {taskinstance.py:2867} INFO - Starting attempt 1 of 2
+[2026-03-01T12:21:17.698+0000] {taskinstance.py:2890} INFO - Executing <Task(PythonOperator): stage_2_preprocessing> on 2026-03-01 12:18:51.768282+00:00
+[2026-03-01T12:21:17.719+0000] {standard_task_runner.py:72} INFO - Started process 398 to run task
+[2026-03-01T12:21:17.726+0000] {standard_task_runner.py:104} INFO - Running: ['***', 'tasks', 'run', 'flight_fare_stages_2_to_7', 'stage_2_preprocessing', 'manual__2026-03-01T12:18:51.768282+00:00', '--job-id', '5', '--raw', '--subdir', 'DAGS_FOLDER/flight_fare_stages_2_to_7_dag.py', '--cfg-path', '/tmp/tmp3mh0dj3o']
+[2026-03-01T12:21:17.738+0000] {standard_task_runner.py:105} INFO - Job 5: Subtask stage_2_preprocessing
+[2026-03-01T12:21:17.886+0000] {task_command.py:467} INFO - Running <TaskInstance: flight_fare_stages_2_to_7.stage_2_preprocessing manual__2026-03-01T12:18:51.768282+00:00 [running]> on host ad5cf56276c4
+[2026-03-01T12:21:18.515+0000] {taskinstance.py:3134} INFO - Exporting env vars: AIRFLOW_CTX_DAG_EMAIL='cenartech0@gmail.com' AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='flight_fare_stages_2_to_7' AIRFLOW_CTX_TASK_ID='stage_2_preprocessing' AIRFLOW_CTX_EXECUTION_DATE='2026-03-01T12:18:51.768282+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2026-03-01T12:18:51.768282+00:00'
+[2026-03-01T12:21:18.519+0000] {taskinstance.py:732} INFO - ::endgroup::
+[2026-03-01T12:21:18.568+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:18 | INFO | flight_fare.stage2 | run_stage_2 | Starting Stage 2 pipeline execution.
+[2026-03-01T12:21:18.573+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:18 | INFO | flight_fare.stage2 | run_stage_2 | Dataset path: /opt/***/notebook/raw_bangladesh_data/Flight_Price_Dataset_of_Bangladesh.csv
+[2026-03-01T12:21:18.577+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:18 | INFO | flight_fare.stage2 | load_flight_dataset | Loading dataset from /opt/***/notebook/raw_bangladesh_data/Flight_Price_Dataset_of_Bangladesh.csv (attempt 1/3).
+[2026-03-01T12:21:19.220+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:19 | INFO | flight_fare.stage2 | load_flight_dataset | Dataset loaded successfully with 57000 rows.
+[2026-03-01T12:21:32.872+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:32 | INFO | flight_fare.stage2 | run_stage_2 | Stage 2 completed successfully.
+[2026-03-01T12:21:32.876+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:32 | INFO | flight_fare.stage2 | run_stage_2 | Cleaned dataset: /opt/***/artifacts/stage_2/cleaned_dataset.csv
+[2026-03-01T12:21:32.879+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:32 | INFO | flight_fare.stage2 | run_stage_2 | Preprocessor: /opt/***/artifacts/stage_2/preprocessor.pkl
+[2026-03-01T12:21:32.883+0000] {logging_mixin.py:190} WARNING - 2026-03-01 12:21:32 | INFO | flight_fare.stage2 | run_stage_2 | Report: /opt/***/artifacts/stage_2/preprocessing_report.json
+[2026-03-01T12:21:32.971+0000] {python.py:240} INFO - Done. Returned value was: None
+[2026-03-01T12:21:33.037+0000] {taskinstance.py:341} INFO - ::group::Post task execution logs
+[2026-03-01T12:21:33.040+0000] {taskinstance.py:353} INFO - Marking task as SUCCESS. dag_id=flight_fare_stages_2_to_7, task_id=stage_2_preprocessing, run_id=manual__2026-03-01T12:18:51.768282+00:00, execution_date=20260301T121851, start_date=20260301T122117, end_date=20260301T122133
+[2026-03-01T12:21:33.212+0000] {local_task_job_runner.py:266} INFO - Task exited with return code 0
+[2026-03-01T12:21:33.270+0000] {taskinstance.py:3901} INFO - 1 downstream tasks scheduled from follow-on schedule check
+[2026-03-01T12:21:33.278+0000] {local_task_job_runner.py:245} INFO - ::endgroup::
