@@ -7,6 +7,10 @@ import json
 import pickle
 import shutil
 import time
+import logging
+
+
+import joblib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -56,7 +60,6 @@ def run_with_retries_and_timeout(
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be greater than 0.")
 
-    import logging
 
     logger = logging.getLogger(logger_name)
     last_error: Exception | None = None
@@ -113,6 +116,82 @@ def load_json_with_retries(
     )
 
 
+def _load_pickle_compatible(pickle_path: Path) -> Any:
+    """Load model with fallback compatibility for old pickle-based serializations.
+    
+    Handles numpy BitGenerator compatibility issues from version mismatches by
+    registering known BitGenerator classes in numpy's internal pickle helpers
+    and by returning mapped classes during unpickling.
+    """
+    import warnings
+    import sys
+    import types
+    import numpy as _np
+
+    # Mapping of historical module/class -> current class object (if available)
+    mapping: dict[tuple[str, str], type | None] = {
+        ("numpy.random._mt19937", "MT19937"): getattr(_np.random, "MT19937", None),
+        ("numpy.random._pcg64", "PCG64"): getattr(_np.random, "PCG64", None),
+        ("numpy.random._philox", "Philox"): getattr(_np.random, "Philox", None),
+        ("numpy.random._sfc64", "SFC64"): getattr(_np.random, "SFC64", None),
+    }
+
+    # Best-effort: patch numpy.random._pickle registries where they exist
+    try:
+        import numpy.random._pickle as _nrp  # type: ignore
+    except Exception:
+        _nrp = None
+
+    if _nrp is not None:
+        for (mod, name), cls in mapping.items():
+            if cls is None:
+                continue
+            for attr in ("_KNOWN_BIT_GENERATORS", "_BITGENERATOR_REGISTRY", "_BIT_GENERATOR_TYPE_MAP", "_bit_generators"):
+                if hasattr(_nrp, attr):
+                    try:
+                        registry = getattr(_nrp, attr)
+                        if isinstance(registry, dict):
+                            registry[f"{mod}.{name}"] = cls
+                    except Exception:
+                        pass
+
+    # Ensure historical submodule paths exist in sys.modules so pickle can import them
+    for (mod, name), cls in mapping.items():
+        if mod in sys.modules or cls is None:
+            continue
+        shim = types.ModuleType(mod)
+        try:
+            setattr(shim, name, cls)
+        except Exception:
+            pass
+        sys.modules[mod] = shim
+
+    class CompatibilityUnpickler(pickle.Unpickler):
+        """Custom Unpickler that maps historical numpy RNG classes to current ones."""
+
+        def find_class(self, module: str, name: str):
+            key = (module, name)
+            if key in mapping and mapping[key] is not None:
+                return mapping[key]
+            return super().find_class(module, name)
+
+    # Attempt to load with compatibility unpickler first, then joblib
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        try:
+            with open(pickle_path, "rb") as f:
+                return CompatibilityUnpickler(f).load()
+        except Exception as pickle_error:
+            try:
+                return joblib.load(pickle_path)
+            except Exception as joblib_error:
+                error_msg = (
+                    f"Failed to load pickle from {pickle_path.name}: "
+                    f"Pickle error: {pickle_error}. Joblib error: {joblib_error}"
+                )
+                raise Stage7Error(error_msg) from pickle_error
+
+
 def load_pickle_with_retries(
     pickle_path: Path,
     logger_name: str,
@@ -122,7 +201,7 @@ def load_pickle_with_retries(
 ) -> Any:
     """Load pickle file with retry and timeout protection."""
     return run_with_retries_and_timeout(
-        operation=lambda: pickle.loads(pickle_path.read_bytes()),
+        operation=lambda: _load_pickle_compatible(pickle_path),
         operation_name=f"load_pickle:{pickle_path.name}",
         logger_name=logger_name,
         retries=retries,

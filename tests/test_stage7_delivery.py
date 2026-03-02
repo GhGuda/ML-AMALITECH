@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import joblib
+
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 
@@ -107,8 +109,8 @@ class Stage7DeliveryTests(unittest.TestCase):
             stage5_summary_path = stage5_dir / "stage5_summary_report.json"
 
             cleaned_df.to_csv(cleaned_path, index=False)
-            preprocessor_path.write_bytes(pickle.dumps(preprocessor))
-            best_model_path.write_bytes(pickle.dumps(model))
+            joblib.dump(preprocessor, preprocessor_path)
+            joblib.dump(model, best_model_path)
 
             preprocessing_report_path.write_text(
                 json.dumps(

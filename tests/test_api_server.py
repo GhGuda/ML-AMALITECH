@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import joblib
+
 import pandas as pd
 from fastapi.testclient import TestClient
 from sklearn.ensemble import RandomForestRegressor
@@ -86,8 +88,8 @@ def _build_test_package(package_dir: Path) -> tuple[list[str], pd.DataFrame]:
     model = RandomForestRegressor(n_estimators=30, random_state=42)
     model.fit(transformed, training_df["Total Fare (BDT)"])
 
-    (package_dir / "best_model.pkl").write_bytes(pickle.dumps(model))
-    (package_dir / "preprocessor.pkl").write_bytes(pickle.dumps(preprocessor))
+    (package_dir / "best_model.pkl").write_bytes(joblib.dumps(model))
+    (package_dir / "preprocessor.pkl").write_bytes(joblib.dumps(preprocessor))
     (package_dir / "model_manifest.json").write_text(
         json.dumps({"package_version": "v_test", "model": {"model_name": "RandomForestRegressor"}}),
         encoding="utf-8",

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import pickle
 import time
+
+import joblib
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from pathlib import Path
@@ -203,8 +205,7 @@ def save_dataframe_csv(dataframe: pd.DataFrame, output_path: Path) -> Path:
 def save_model_pickle(model: LinearRegression, output_path: Path) -> Path:
     """Persist trained model as pickle artifact."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("wb") as file_obj:
-        pickle.dump(model, file_obj)
+    joblib.dump(model, output_path)
     return output_path
 
 

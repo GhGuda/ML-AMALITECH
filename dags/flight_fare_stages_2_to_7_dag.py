@@ -27,7 +27,7 @@ from flight_fare.settings import (  # noqa: E402
     Stage2Settings,
     Stage3Settings,
     Stage4Settings,
-    Stage5Settings,
+    # Stage5Settings,
     Stage6Settings,
     Stage7Settings,
 )
@@ -35,7 +35,7 @@ from flight_fare.stage1_pipeline import run_stage_1 as stage_1_runner  # noqa: E
 from flight_fare.stage2_pipeline import run_stage_2 as stage_2_runner  # noqa: E402
 from flight_fare.stage3_eda import run_stage_3 as stage_3_runner  # noqa: E402
 from flight_fare.stage4_baseline import run_stage_4 as stage_4_runner  # noqa: E402
-from flight_fare.stage5_advanced import run_stage_5 as stage_5_runner  # noqa: E402
+# from flight_fare.stage5_advanced import run_stage_5 as stage_5_runner  # noqa: E402
 from flight_fare.stage6_interpretation import run_stage_6 as stage_6_runner  # noqa: E402
 from flight_fare.stage7_delivery import run_stage_7 as stage_7_runner  # noqa: E402
 
@@ -60,9 +60,9 @@ def run_stage_4() -> None:
     stage_4_runner(settings=Stage4Settings.from_env())
 
 
-def run_stage_5() -> None:
-    """Execute Stage 5 advanced modeling/tuning."""
-    stage_5_runner(settings=Stage5Settings.from_env())
+# def run_stage_5() -> None:
+#     """Execute Stage 5 advanced modeling/tuning."""
+#     stage_5_runner(settings=Stage5Settings.from_env())
 
 
 def run_stage_6() -> None:
@@ -84,9 +84,9 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=2),
     
-    #EMAIL ALERTING
-    "email": ["cenartech0@gmail.com"],
-    "email_on_failure": True,
+    # EMAIL ALERTING (disabled by default to avoid SMTP failures in local/dev)
+    "email": [],
+    "email_on_failure": False,
     "email_on_retry": False,
 }
 
@@ -122,10 +122,10 @@ with DAG(
         python_callable=run_stage_4,
     )
 
-    stage_5 = PythonOperator(
-        task_id="stage_5_advanced_modeling",
-        python_callable=run_stage_5,
-    )
+    # stage_5 = PythonOperator(
+    #     task_id="stage_5_advanced_modeling",
+    #     python_callable=run_stage_5,
+    # )
 
     stage_6 = PythonOperator(
         task_id="stage_6_interpretation",
@@ -140,5 +140,5 @@ with DAG(
     # --------------------------------------------------
     # DEPENDENCIES (clear & linear)
     # --------------------------------------------------
-    stage_1 >> stage_2 >> stage_3 >> stage_4 >> stage_5 >> stage_6 >> stage_7
+    stage_1 >> stage_2 >> stage_3 >> stage_4 >> stage_6 >> stage_7
 
