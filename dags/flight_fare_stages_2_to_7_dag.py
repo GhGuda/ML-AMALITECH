@@ -37,7 +37,6 @@ from flight_fare.stage3_eda import run_stage_3 as stage_3_runner  # noqa: E402
 from flight_fare.stage4_baseline import run_stage_4 as stage_4_runner  # noqa: E402
 # from flight_fare.stage5_advanced import run_stage_5 as stage_5_runner  # noqa: E402
 from flight_fare.stage6_interpretation import run_stage_6 as stage_6_runner  # noqa: E402
-from flight_fare.stage7_delivery import run_stage_7 as stage_7_runner  # noqa: E402
 
 
 def run_stage_1() -> None:
@@ -70,9 +69,6 @@ def run_stage_6() -> None:
     stage_6_runner(settings=Stage6Settings.from_env())
 
 
-def run_stage_7() -> None:
-    """Execute Stage 7 packaging/delivery."""
-    stage_7_runner(settings=Stage7Settings.from_env())
 
 # ============================================================
 # Default DAG Arguments
@@ -84,10 +80,6 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=2),
     
-    # EMAIL ALERTING (disabled by default to avoid SMTP failures in local/dev)
-    "email": [],
-    "email_on_failure": False,
-    "email_on_retry": False,
 }
 
 # ============================================================
@@ -103,22 +95,22 @@ with DAG(
     tags=["flight_fare", "ml_pipeline"],
 ) as dag:
     stage_1 = PythonOperator(
-        task_id="stage_1_automated_problem-framing_preprocessing",
+        task_id="automated_problem_framing_preprocessing",
         python_callable=run_stage_1,
     )
     
     stage_2 = PythonOperator(
-        task_id="stage_2_preprocessing",
+        task_id="preprocessing",
         python_callable=run_stage_2,
     )
 
     stage_3 = PythonOperator(
-        task_id="stage_3_eda",
+        task_id="eda",
         python_callable=run_stage_3,
     )
 
     stage_4 = PythonOperator(
-        task_id="stage_4_baseline_model",
+        task_id="baseline_model",
         python_callable=run_stage_4,
     )
 
@@ -128,17 +120,13 @@ with DAG(
     # )
 
     stage_6 = PythonOperator(
-        task_id="stage_6_interpretation",
+        task_id="interpretation",
         python_callable=run_stage_6,
     )
 
-    stage_7 = PythonOperator(
-        task_id="stage_7_packaging_delivery",
-        python_callable=run_stage_7,
-    )
 
     # --------------------------------------------------
     # DEPENDENCIES (clear & linear)
     # --------------------------------------------------
-    stage_1 >> stage_2 >> stage_3 >> stage_4 >> stage_6 >> stage_7
+    stage_1 >> stage_2 >> stage_3 >> stage_4 >> stage_6
 
