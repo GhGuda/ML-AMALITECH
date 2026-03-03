@@ -128,12 +128,36 @@ def _load_pickle_compatible(pickle_path: Path) -> Any:
     import types
     import numpy as _np
 
-    # Mapping of historical module/class -> current class object (if available)
+    # Mapping of historical module/class -> current class object (if available).
+    # Be resilient across numpy versions by searching likely submodules
+    # when the direct attribute on `numpy.random` is not present.
+    import importlib
+
+    def _find_bitgen_class(name: str):
+        # Common locations to check for BitGenerator classes across numpy versions
+        candidates = [
+            ("numpy.random", name),
+            ("numpy.random._bit_generator", name),
+            ("numpy.random._mt19937", name),
+            ("numpy.random._pcg64", name),
+            ("numpy.random._philox", name),
+            ("numpy.random._sfc64", name),
+        ]
+        for mod_name, cls_name in candidates:
+            try:
+                mod = importlib.import_module(mod_name)
+            except Exception:
+                continue
+            cls = getattr(mod, cls_name, None)
+            if cls is not None:
+                return cls
+        return None
+
     mapping: dict[tuple[str, str], type | None] = {
-        ("numpy.random._mt19937", "MT19937"): getattr(_np.random, "MT19937", None),
-        ("numpy.random._pcg64", "PCG64"): getattr(_np.random, "PCG64", None),
-        ("numpy.random._philox", "Philox"): getattr(_np.random, "Philox", None),
-        ("numpy.random._sfc64", "SFC64"): getattr(_np.random, "SFC64", None),
+        ("numpy.random._mt19937", "MT19937"): _find_bitgen_class("MT19937"),
+        ("numpy.random._pcg64", "PCG64"): _find_bitgen_class("PCG64"),
+        ("numpy.random._philox", "Philox"): _find_bitgen_class("Philox"),
+        ("numpy.random._sfc64", "SFC64"): _find_bitgen_class("SFC64"),
     }
 
     # Best-effort: patch numpy.random._pickle registries where they exist
@@ -145,8 +169,13 @@ def _load_pickle_compatible(pickle_path: Path) -> Any:
     if _nrp is not None:
         for (mod, name), cls in mapping.items():
             if cls is None:
+                # try to discover the class dynamically as a last resort
+                cls = _find_bitgen_class(name)
+                mapping[(mod, name)] = cls
+            if cls is None:
                 continue
-            for attr in ("_KNOWN_BIT_GENERATORS", "_BITGENERATOR_REGISTRY", "_BIT_GENERATOR_TYPE_MAP", "_bit_generators"):
+            # attempt to update any registry-like structures present in numpy.random._pickle
+            for attr in ("_KNOWN_BIT_GENERATORS", "_BITGENERATOR_REGISTRY", "_BIT_GENERATOR_TYPE_MAP", "_bit_generators", "bit_generators"):
                 if hasattr(_nrp, attr):
                     try:
                         registry = getattr(_nrp, attr)
@@ -158,6 +187,8 @@ def _load_pickle_compatible(pickle_path: Path) -> Any:
     # Ensure historical submodule paths exist in sys.modules so pickle can import them
     for (mod, name), cls in mapping.items():
         if mod in sys.modules or cls is None:
+            # If the module is already present or we couldn't locate a class,
+            # skip creating a shim for that entry.
             continue
         shim = types.ModuleType(mod)
         try:
